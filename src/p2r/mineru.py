@@ -1,11 +1,11 @@
 """MinerU API client for PDF parsing."""
 
-import time
-import zipfile
-from pathlib import Path
-from typing import Dict, Any, Optional
-import requests
-from . import config
+import time  # 用于延迟和计时功能（轮询检查任务状态）
+import zipfile  # 用于处理ZIP格式文件（解压MinerU返回的结果）
+from pathlib import Path  # 用于跨平台文件路径操作
+from typing import Dict, Any, Optional  # 用于类型提示
+import requests  # 用于HTTP请求（与MinerU API通信）
+from . import config  # 导入本地配置模块（读取API令牌和基础URL）
 
 
 class MinerUError(Exception):
