@@ -1,9 +1,10 @@
 """MinerU API client for PDF parsing."""
 
 import time  # 用于延迟和计时功能（轮询检查任务状态）
+import shutil
 import zipfile  # 用于处理ZIP格式文件（解压MinerU返回的结果）
 from pathlib import Path  # 用于跨平台文件路径操作
-from typing import Dict, Any, Optional  # 用于类型提示
+from typing import Dict, Any, Optional, Iterable  # 用于类型提示
 import requests  # 用于HTTP请求（与MinerU API通信）
 from . import config  # 导入本地配置模块（读取API令牌和基础URL）
 
@@ -32,7 +33,8 @@ class MinerUClient:
             api_base_url = cfg.get("mineru", {}).get(
                 "api_base_url", "https://mineru.net/api/v4"
             )
-        self.api_base_url = api_base_url.rstrip("/")
+        # Guard against accidental whitespace/newlines in config/env (common copy/paste issue).
+        self.api_base_url = "".join(str(api_base_url).split()).rstrip("/")
 
         # Load polling configuration
         cfg = config.load_config()
@@ -81,7 +83,10 @@ class MinerUClient:
         return data
 
     def request_upload_urls(
-        self, file_path: Path, model_version: str = "vlm"
+        self,
+        file_path: Path,
+        model_version: str = "vlm",
+        extra_formats: Optional[Iterable[str]] = None,
     ) -> tuple[str, str]:
         """Request upload URL for a file.
 
@@ -109,6 +114,9 @@ class MinerUClient:
             "files": [{"name": file_path.name}],
             "model_version": model_version,
         }
+        if extra_formats:
+            # MinerU default outputs markdown+json; extra_formats requests additional formats like html.
+            payload["extra_formats"] = list(extra_formats)
 
         response = requests.post(
             url, headers=self._get_headers(), json=payload, timeout=30
@@ -248,7 +256,42 @@ class MinerUClient:
 
         return output_dir
 
-    def parse_pdf(self, file_path: Path, output_dir: Path) -> Path:
+    def _safe_move_to_dir(self, src: Path, dest_dir: Path) -> Path:
+        """Move src into dest_dir, avoiding overwrites by suffixing _vN when needed."""
+        dest_dir.mkdir(parents=True, exist_ok=True)
+        candidate = dest_dir / src.name
+        if not candidate.exists():
+            shutil.move(str(src), str(candidate))
+            return candidate
+
+        stem, suffix = src.stem, src.suffix
+        for n in range(2, 1000):
+            candidate = dest_dir / f"{stem}_v{n}{suffix}"
+            if not candidate.exists():
+                shutil.move(str(src), str(candidate))
+                return candidate
+
+        raise MinerUError(f"Too many name conflicts while moving {src.name}")
+
+    def _organize_output_dir(self, output_dir: Path) -> None:
+        """Lightweight post-processing: keep reading assets at root, move raw artifacts into raw/."""
+        raw_dir = output_dir / "raw"
+        raw_names = {"layout.json"}
+        raw_suffixes = ("_content_list.json", "_model.json", "_origin.pdf")
+
+        for p in output_dir.iterdir():
+            if not p.is_file():
+                continue
+            if p.name in raw_names or p.name.endswith(raw_suffixes):
+                self._safe_move_to_dir(p, raw_dir)
+
+    def parse_pdf(
+        self,
+        file_path: Path,
+        output_dir: Path,
+        model_version: str = "vlm",
+        extra_formats: Optional[Iterable[str]] = None,
+    ) -> Path:
         """Parse a PDF file and download results.
 
         This is the main high-level method that orchestrates the entire process.
@@ -256,6 +299,8 @@ class MinerUClient:
         Args:
             file_path: Path to PDF file
             output_dir: Directory to save results
+            model_version: MinerU model version ("pipeline" or "vlm")
+            extra_formats: Request additional output formats (e.g. ["html"])
 
         Returns:
             Path to the directory containing extracted files
@@ -264,7 +309,9 @@ class MinerUClient:
             MinerUError: If any step fails
         """
         # Step 1: Request upload URL
-        batch_id, upload_url = self.request_upload_urls(file_path)
+        batch_id, upload_url = self.request_upload_urls(
+            file_path, model_version=model_version, extra_formats=extra_formats
+        )
 
         # Step 2: Upload file
         self.upload_file(file_path, upload_url)
@@ -286,5 +333,7 @@ class MinerUClient:
             raise MinerUError("No result URL in response")
 
         extracted_dir = self.download_result(zip_url, output_dir)
+        # Keep full.md/images at root; move raw/debug artifacts into raw/ for cleaner consumption.
+        self._organize_output_dir(extracted_dir)
 
         yield {"state": "completed", "output_dir": str(extracted_dir)}

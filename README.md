@@ -5,6 +5,7 @@ A command-line tool that converts PDF papers to Markdown using MinerU cloud API.
 ## Features
 
 - Convert PDF files to Markdown format
+- Request HTML output from MinerU by default
 - Automatic OCR for scanned PDFs
 - Extract images and tables
 - Support for academic papers with complex layouts
@@ -88,6 +89,13 @@ The output will be saved to a temporary directory by default.
 
 ```bash
 p2r convert paper.pdf -o ./output
+```
+
+By default, p2r also requests an HTML output (in addition to MinerU's default markdown/json).
+To disable HTML:
+
+```bash
+p2r convert paper.pdf --no-html
 ```
 
 ### Choose Model Version

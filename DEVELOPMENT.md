@@ -73,6 +73,30 @@ export P2R_MINERU_TOKEN="your-token-here"
 p2r convert paper.pdf
 ```
 
+### 环境变量方式（指定 API Base URL）
+
+当你的配置文件里 `api_base_url` 被误写（例如包含换行符）或需要切换到不同环境时，可以用环境变量覆盖：
+
+```bash
+export P2R_MINERU_API_BASE_URL="https://mineru.net/api/v4"
+export P2R_MINERU_TOKEN="your-token-here"
+p2r convert paper.pdf
+```
+
+### 输出说明（HTML 默认开启）
+
+默认会向 MinerU 请求 HTML 产物（除 markdown/json 默认产出之外）。你会在输出目录看到：
+- `full.md`（整篇 Markdown）
+- `*.html`（MinerU 生成的 HTML，文件名以实际返回为准）
+- `images/`（图片资源）
+- `raw/`（原始/调试产物：`layout.json`、`*_model.json`、`*_content_list.json`、`*_origin.pdf`）
+
+如需关闭 HTML 请求：
+
+```bash
+p2r convert paper.pdf --no-html
+```
+
 ## 项目结构说明
 
 ```

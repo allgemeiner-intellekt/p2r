@@ -35,7 +35,13 @@ def main():
     default="vlm",
     help="MinerU model version (default: vlm)",
 )
-def convert(pdf_file: Path, output: Path, model: str):
+@click.option(
+    "--html/--no-html",
+    default=True,
+    show_default=True,
+    help="Request HTML output from MinerU (default: enabled)",
+)
+def convert(pdf_file: Path, output: Path, model: str, html: bool):
     """Convert a PDF file to Markdown.
 
     Example:
@@ -79,7 +85,10 @@ def convert(pdf_file: Path, output: Path, model: str):
             task = progress.add_task("Uploading file...", total=100)
 
             try:
-                for update in client.parse_pdf(pdf_file, output):
+                extra_formats = ["html"] if html else None
+                for update in client.parse_pdf(
+                    pdf_file, output, model_version=model, extra_formats=extra_formats
+                ):
                     state = update.get("state")
 
                     if state == "waiting-file":
@@ -109,10 +118,16 @@ def convert(pdf_file: Path, output: Path, model: str):
         # List output files
         if output.exists():
             md_files = list(output.glob("**/*.md"))
+            html_files = list(output.glob("**/*.html"))
             if md_files:
                 console.print(f"\nMarkdown files:")
                 for md_file in md_files:
                     rel_path = md_file.relative_to(output)
+                    console.print(f"  - {rel_path}")
+            if html_files:
+                console.print(f"\nHTML files:")
+                for html_file in html_files:
+                    rel_path = html_file.relative_to(output)
                     console.print(f"  - {rel_path}")
 
     except Exception as e:
