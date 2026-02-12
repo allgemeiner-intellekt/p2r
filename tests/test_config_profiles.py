@@ -12,6 +12,7 @@ def test_load_config_creates_v2_default(monkeypatch, tmp_path: Path):
     assert loaded["version"] == cfg.CONFIG_VERSION
     assert loaded["default_profile"] == "default"
     assert "default" in loaded["profiles"]
+    assert loaded["image_upload"]["mode"] == "picgo_server"
     assert (path).exists()
 
     on_disk = json.loads(path.read_text(encoding="utf-8"))
@@ -50,4 +51,3 @@ def test_load_config_migrates_v1_to_v2(monkeypatch, tmp_path: Path):
     assert on_disk["version"] == cfg.CONFIG_VERSION
     assert "profiles" in on_disk
     assert "default_profile" in on_disk
-

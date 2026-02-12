@@ -22,7 +22,10 @@ from .config import (
     get_config_path,
     get_default_profile_name,
     get_profile,
+    get_default_config,
+    get_default_profile,
     load_config,
+    save_config,
     update_token,
 )
 from .export import (
@@ -619,6 +622,55 @@ def config_cmd():
     raise SystemExit(rc)
 
 
+@cli.command("init")
+@click.option("--force", is_flag=True, help="Overwrite existing config if it exists")
+@click.option("-y", "--yes", is_flag=True, help="Do not prompt for confirmation when using --force")
+def init_cmd(force: bool, yes: bool):
+    """Initialize (or reset) your p2r configuration with guided prompts.
+
+    This is intended for onboarding. It only asks for:
+    - MinerU API token
+    - one additional profile (name + export dirs)
+    """
+    config_path = get_config_path()
+    if config_path.exists() and not force:
+        console.print(f"[red]Error:[/red] Config already exists: {config_path}")
+        console.print("Run `p2r init --force` to overwrite it.")
+        raise SystemExit(1)
+
+    if config_path.exists() and force and not yes:
+        if not click.confirm(f"Overwrite existing config at {config_path}?", default=False):
+            console.print("Aborted.")
+            return
+
+    cfg = get_default_config()
+
+    console.print("[bold]MinerU settings[/bold]")
+    token = click.prompt("MinerU API token", default="", show_default=False)
+    if token.strip():
+        cfg.setdefault("mineru", {})["api_token"] = token.strip()
+
+    console.print("\n[bold]Profile[/bold]")
+    name = click.prompt("Profile name", default="reading").strip()
+    while not name or name in cfg.get("profiles", {}):
+        name = click.prompt("Profile name (must be unique)", default=f"{name or 'reading'}_v2").strip()
+
+    p = get_default_profile()
+    export_cfg = p.setdefault("export", {})
+    export_cfg["markdown_dir"] = click.prompt("Markdown export directory", default="./md")
+    export_cfg["html_dir"] = click.prompt("HTML export directory", default="./html")
+
+    cfg.setdefault("profiles", {})[name] = p
+    cfg["default_profile"] = name
+
+    save_config(cfg)
+
+    console.print(f"\n[green]Saved[/green] config to: {config_path}")
+    console.print(f"[bold]Default profile:[/bold] {cfg.get('default_profile')}")
+    if not cfg.get("mineru", {}).get("api_token"):
+        console.print(f"[yellow]Note:[/yellow] API token is empty; set it in {config_path} or via {ENV_TOKEN_KEY}.")
+
+
 @cli.command(hidden=True)
 @click.argument("token")
 def config_token(token: str):
@@ -707,7 +759,7 @@ def main() -> None:
         return
 
     # If user explicitly types a subcommand, do not rewrite.
-    if argv[0] in {"convert", "config", "config-token", "show-config", "upload-images"}:
+    if argv[0] in {"convert", "config", "init", "config-token", "show-config", "upload-images"}:
         cli.main(args=argv, prog_name="p2r")
         return
 

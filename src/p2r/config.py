@@ -75,7 +75,7 @@ def get_default_config() -> Dict[str, Any]:
             # When enabled, p2r can upload extracted images to an image bed and rewrite Markdown links.
             "enabled": False,
             # Supported modes: "command" (run a local command per image) or "picgo_server" (HTTP endpoint).
-            "mode": "command",
+            "mode": "picgo_server",
             # Command template; {file} will be replaced with the local image path.
             # Example: picgo upload "{file}"
             "command": "",
@@ -341,4 +341,3 @@ def update_token(token: str) -> None:
     config = load_config()
     config.setdefault("mineru", {})["api_token"] = token
     save_config(config)
-
