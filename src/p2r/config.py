@@ -10,6 +10,7 @@ from typing import Dict, Any
 CONFIG_FILE_NAME = ".p2r_config.json"
 ENV_TOKEN_KEY = "P2R_MINERU_TOKEN"
 ENV_API_BASE_URL_KEY = "P2R_MINERU_API_BASE_URL"
+ENV_CONFIG_PATH_KEY = "P2R_CONFIG_PATH"
 
 
 def get_config_path() -> Path:
@@ -18,6 +19,9 @@ def get_config_path() -> Path:
     Returns:
         Path to ~/.p2r_config.json
     """
+    env_path = os.getenv(ENV_CONFIG_PATH_KEY)
+    if env_path:
+        return Path(env_path).expanduser()
     return Path.home() / CONFIG_FILE_NAME
 
 
@@ -38,6 +42,21 @@ def get_default_config() -> Dict[str, Any]:
         "output": {
             "temp_dir": "/tmp/p2r",
         },
+        "image_upload": {
+            # When enabled, p2r can upload extracted images to an image bed and rewrite Markdown links.
+            "enabled": False,
+            # Supported modes: "command" (run a local command per image) or "picgo_server" (HTTP endpoint).
+            "mode": "command",
+            # Command template; {file} will be replaced with the local image path.
+            # Example: picgo upload "{file}"
+            "command": "",
+            # Optional: PicGo server endpoint (used when mode="picgo_server")
+            "picgo_server": {
+                "url": "http://127.0.0.1:36677/upload",
+                # If your PicGo server has a secret enabled, set it here.
+                "secret": "",
+            },
+        },
     }
 
 
@@ -52,14 +71,22 @@ def load_config() -> Dict[str, Any]:
     """
     config_path = get_config_path()
 
-    # If config file doesn't exist, create it with defaults
+    # If config file doesn't exist, create it with defaults (best-effort).
     if not config_path.exists():
         config = get_default_config()
-        save_config(config)
+        try:
+            save_config(config)
+        except OSError:
+            # In restricted environments (sandbox/CI) we may not be able to write to the user's home.
+            # Still return defaults (env vars can override) so the CLI can run.
+            pass
     else:
-        # Load existing config
-        with open(config_path, 'r', encoding='utf-8') as f:
-            config = json.load(f)
+        # Load existing config (best-effort). If unreadable/corrupt, fall back to defaults.
+        try:
+            with open(config_path, 'r', encoding='utf-8') as f:
+                config = json.load(f)
+        except (OSError, json.JSONDecodeError):
+            config = get_default_config()
 
     def _sanitize_url(value: Any) -> Any:
         # URLs should never contain whitespace; newlines commonly appear from copy/paste.
@@ -75,7 +102,10 @@ def load_config() -> Dict[str, Any]:
         and _sanitize_url(mineru_cfg["api_base_url"]) == legacy_default
     ):
         mineru_cfg["api_base_url"] = get_default_config()["mineru"]["api_base_url"]
-        save_config(config)
+        try:
+            save_config(config)
+        except OSError:
+            pass
 
     # Environment variable takes precedence
     env_token = os.getenv(ENV_TOKEN_KEY)
@@ -86,6 +116,29 @@ def load_config() -> Dict[str, Any]:
     env_api_base_url = os.getenv(ENV_API_BASE_URL_KEY)
     if env_api_base_url:
         config.setdefault("mineru", {})["api_base_url"] = _sanitize_url(env_api_base_url)
+
+    # Optional override for config-driven image upload.
+    # (Kept intentionally small: users can always edit config JSON for full options.)
+    env_upload_enabled = os.getenv("P2R_IMAGE_UPLOAD_ENABLED")
+    if env_upload_enabled is not None:
+        config.setdefault("image_upload", {})["enabled"] = env_upload_enabled.strip().lower() in {
+            "1",
+            "true",
+            "yes",
+            "on",
+        }
+    env_upload_mode = os.getenv("P2R_IMAGE_UPLOAD_MODE")
+    if env_upload_mode:
+        config.setdefault("image_upload", {})["mode"] = env_upload_mode.strip()
+    env_upload_cmd = os.getenv("P2R_IMAGE_UPLOAD_COMMAND")
+    if env_upload_cmd:
+        config.setdefault("image_upload", {})["command"] = env_upload_cmd
+    env_picgo_server_url = os.getenv("P2R_PICGO_SERVER_URL")
+    if env_picgo_server_url:
+        config.setdefault("image_upload", {}).setdefault("picgo_server", {})["url"] = env_picgo_server_url.strip()
+    env_picgo_server_secret = os.getenv("P2R_PICGO_SERVER_SECRET")
+    if env_picgo_server_secret:
+        config.setdefault("image_upload", {}).setdefault("picgo_server", {})["secret"] = env_picgo_server_secret.strip()
 
     # Normalize values that may accidentally contain whitespace/newlines.
     if "api_token" in mineru_cfg and isinstance(mineru_cfg["api_token"], str):
