@@ -66,12 +66,12 @@ def test_cli_html_default_and_no_html(monkeypatch, tmp_path: Path):
     runner = CliRunner()
 
     # Default: HTML enabled => extra_formats includes ["html"]
-    r1 = runner.invoke(cli.main, ["convert", str(pdf), "-o", str(out)])
+    r1 = runner.invoke(cli.cli, ["convert", str(pdf), "-o", str(out)])
     assert r1.exit_code == 0
     assert calls[-1]["extra_formats"] == ["html"]
 
     # Explicit: --no-html => extra_formats is None
-    r2 = runner.invoke(cli.main, ["convert", str(pdf), "-o", str(out), "--no-html"])
+    r2 = runner.invoke(cli.cli, ["convert", str(pdf), "-o", str(out), "--no-html"])
     assert r2.exit_code == 0
     assert calls[-1]["extra_formats"] is None
 
@@ -97,4 +97,3 @@ def test_organize_output_dir_moves_raw_artifacts(tmp_path: Path):
     assert (out / "raw" / "id_content_list.json").exists()
     assert (out / "raw" / "id_model.json").exists()
     assert (out / "raw" / "id_origin.pdf").exists()
-
