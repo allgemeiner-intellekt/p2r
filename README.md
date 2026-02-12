@@ -1,74 +1,63 @@
 # p2r
 
-A command-line tool that converts PDF papers to Markdown using MinerU cloud API.
+`p2r` is a small Python CLI that sends a PDF to the MinerU cloud API and downloads the extracted results (Markdown + JSON by default, with optional HTML).
 
-## Features
+## What you get
 
-- Convert PDF files to Markdown format
-- Request HTML output from MinerU by default
-- Automatic OCR for scanned PDFs
-- Extract images and tables
-- Support for academic papers with complex layouts
-- Progress tracking during conversion
+- `p2r convert ...` CLI with a Rich progress display
+- Config stored at `~/.p2r_config.json` (permissions set to `0600`)
+- Optional HTML output (enabled by default)
+- Output folder cleanup: raw/debug artifacts get moved into `raw/`
 
-## Installation
+## Requirements
 
-### For Development
+- Python `>= 3.8` (use `python3`)
+- A MinerU API token
+- Internet access
 
-1. Clone the repository:
+## Install
+
+### User install (recommended)
+
+With `pipx` from a local checkout:
+
 ```bash
-git clone <repository-url>
-cd p2r
+pipx install .
 ```
 
-2. Create a virtual environment:
+### Development install
+
 ```bash
 python3 -m venv venv
-source venv/bin/activate  # On macOS/Linux
-# venv\Scripts\activate    # On Windows
+source venv/bin/activate
+pip install -e ".[dev]"
 ```
 
-3. Install in editable mode:
+Tip: `./activate.sh` will activate `venv` and print common commands.
+
+## Configure MinerU
+
+Two supported ways:
+
+1) Save token to the config file:
+
 ```bash
-pip install -e .
+p2r config-token YOUR_TOKEN
 ```
 
-### For Users
+2) Use an environment variable (takes precedence over the config file):
 
-Install using pipx (recommended):
 ```bash
-pipx install /path/to/p2r
+export P2R_MINERU_TOKEN=YOUR_TOKEN
 ```
 
-Or using pip with a virtual environment:
+Optional: override the API base URL (useful for debugging/self-hosting):
+
 ```bash
-pip install /path/to/p2r
+export P2R_MINERU_API_BASE_URL=https://mineru.net/api/v4
 ```
 
-## Configuration
-
-Before using p2r, you need to configure your MinerU API token.
-
-### Get API Token
-
-1. Visit [MinerU website](https://mineru.net) and sign up for an account
-2. Generate an API token from your account dashboard
-
-### Set API Token
-
-You can set the token in two ways:
-
-**Option 1: Using the CLI command**
-```bash
-p2r config-token YOUR_API_TOKEN_HERE
-```
-
-**Option 2: Environment variable**
-```bash
-export P2R_MINERU_TOKEN=YOUR_API_TOKEN_HERE
-```
-
-### View Configuration
+To inspect what `p2r` sees:
 
 ```bash
 p2r show-config
@@ -76,108 +65,59 @@ p2r show-config
 
 ## Usage
 
-### Basic Conversion
+Convert a PDF (default output directory is a temporary folder):
 
-Convert a PDF file to Markdown:
 ```bash
 p2r convert paper.pdf
 ```
 
-The output will be saved to a temporary directory by default.
+Notes:
 
-### Specify Output Directory
+- PDFs over 200MB are rejected before upload.
+
+Write into a specific directory:
 
 ```bash
-p2r convert paper.pdf -o ./output
+p2r convert paper.pdf -o ./out
 ```
 
-By default, p2r also requests an HTML output (in addition to MinerU's default markdown/json).
-To disable HTML:
+Model selection (`vlm` is the CLI default in this repo):
+
+```bash
+p2r convert paper.pdf --model vlm
+p2r convert paper.pdf --model pipeline
+```
+
+HTML output (enabled by default):
 
 ```bash
 p2r convert paper.pdf --no-html
 ```
 
-### Choose Model Version
+## Output layout
 
-MinerU offers two models:
-- `pipeline` (default): Fast and efficient
-- `vlm`: Vision-Language Model for better accuracy
+MinerU returns a ZIP that `p2r` extracts into your output directory. Typical contents:
+
+- `full.md` (primary Markdown)
+- `images/` (assets)
+- `raw/` (moved here if present: `layout.json`, `*_content_list.json`, `*_model.json`, `*_origin.pdf`)
+
+## Repo layout
+
+```
+.
+├── src/p2r/        # package code
+├── tests/          # pytest tests
+├── pyproject.toml  # packaging / deps / console script
+└── test-paper.pdf  # sample PDF used for local testing
+```
+
+## Tests
 
 ```bash
-p2r convert paper.pdf --model vlm
-```
-
-### Complete Example
-
-```bash
-# Configure token (first time only)
-p2r config-token your-token-here
-
-# Convert a paper
-p2r convert research-paper.pdf -o ./converted
-
-# Check the output
-ls ./converted
-```
-
-## Project Status
-
-This is **Phase 1** implementation. Currently supported:
-- ✅ PDF to Markdown conversion
-- ✅ Progress tracking
-- ✅ Configuration management
-- ✅ Basic CLI interface
-
-Not yet implemented (planned for future phases):
-- ⏳ File renaming based on paper title
-- ⏳ Automatic moving to Obsidian vault
-- ⏳ Image upload to image hosting
-- ⏳ Metadata extraction
-- ⏳ Frontmatter generation
-
-## Requirements
-
-- Python 3.8+
-- MinerU API token
-- Internet connection
-
-## Development
-
-### Project Structure
-
-```
-p2r/
-├── src/p2r/
-│   ├── __init__.py
-│   ├── cli.py          # Command-line interface
-│   ├── config.py       # Configuration management
-│   └── mineru.py       # MinerU API client
-├── tests/              # Test suite
-├── doc/                # Documentation
-├── pyproject.toml      # Project configuration
-└── README.md
-```
-
-### Running Tests
-
-```bash
-pytest tests/
-```
-
-### Code Formatting
-
-```bash
-black src/
-ruff check src/
+pytest
 ```
 
 ## License
 
-MIT License - see LICENSE file for details
-
-## Documentation
-
-- [Product Requirements Document (PRD)](doc/PRD.md)
-- [Phase 1 Plan](doc/phase1_plan.md)
-- [MinerU API Reference](doc/mineru_api_reference.md)
+MIT (see `LICENSE`).
