@@ -22,6 +22,36 @@
 
 ### User install (recommended)
 
+If you want to run `p2r` from any folder without managing a per-project virtualenv, install it as a
+global CLI tool (with isolated dependencies).
+
+#### Option A: `uv` (recommended if you already use uv)
+
+From a local checkout:
+
+```bash
+uv tool install .
+uv tool update-shell
+```
+
+Notes:
+
+- After `uv tool update-shell`, restart your shell (or follow the printed instructions) so `p2r` is on `PATH`.
+- Upgrade/uninstall:
+
+```bash
+uv tool upgrade p2r
+uv tool uninstall p2r
+```
+
+If you want changes in the source directory to take effect immediately (editable install):
+
+```bash
+uv tool install -e .
+```
+
+#### Option B: `pipx`
+
 With `pipx` from a local checkout:
 
 ```bash
