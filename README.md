@@ -48,6 +48,7 @@ p2r init
 
 During `init`, `p2r` will ask for your MinerU token and then ask whether you want to create a new profile now.
 If you answer "no", `init` will save the default config (default profile: `default`) and exit.
+You can always create additional profiles later with `p2r profile`.
 
 2) Convert:
 
@@ -124,6 +125,25 @@ Notes:
 
 - `p2r init` can optionally create a new profile and set it as `default_profile`.
 - If you skip profile creation during `init`, the default profile remains `default` (export dirs are `.` / `.` until you change them).
+- `p2r profile` creates a new profile later (without re-running token onboarding). By default it will prompt whether to set it as `default_profile` (default answer: "no").
+
+Create a new profile (guided):
+
+```bash
+p2r profile
+```
+
+Create a new profile non-interactively:
+
+```bash
+p2r profile --name reading --md-dir ./md --html-dir ./html --set-default
+```
+
+Force "do not change default profile" (non-interactive):
+
+```bash
+p2r profile --name reading --md-dir ./md --html-dir ./html --no-set-default
+```
 
 Config file location:
 

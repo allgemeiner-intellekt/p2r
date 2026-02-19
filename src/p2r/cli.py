@@ -51,6 +51,46 @@ from .mineru import MinerUClient, MinerUError
 console = Console()
 
 
+def _prompt_new_profile(
+    *,
+    cfg: dict,
+    name: Optional[str],
+    md_dir: Optional[str],
+    html_dir: Optional[str],
+    default_name: str = "reading",
+    default_md_dir: str = "./md",
+    default_html_dir: str = "./html",
+) -> tuple[str, dict]:
+    profiles = cfg.get("profiles", {}) if isinstance(cfg, dict) else {}
+
+    if name is None:
+        entered = click.prompt("Profile name", default=default_name).strip()
+        while not entered or entered in profiles:
+            entered = click.prompt(
+                "Profile name (must be unique)",
+                default=f"{entered or default_name}_v2",
+            ).strip()
+        name = entered
+    else:
+        name = name.strip()
+        if not name:
+            raise click.ClickException("Profile name cannot be empty")
+        if name in profiles:
+            raise click.ClickException(f"Profile already exists: {name!r}")
+
+    if md_dir is None:
+        md_dir = click.prompt("Markdown export directory", default=default_md_dir)
+    if html_dir is None:
+        html_dir = click.prompt("HTML export directory", default=default_html_dir)
+
+    p = get_default_profile()
+    export_cfg = p.setdefault("export", {})
+    export_cfg["markdown_dir"] = md_dir
+    export_cfg["html_dir"] = html_dir
+
+    return name, p
+
+
 def _upload_images_with_progress(
     *,
     output_dir: Path,
@@ -661,14 +701,7 @@ def init_cmd(force: bool, yes: bool):
         return
 
     console.print("\n[bold]Profile[/bold]")
-    name = click.prompt("Profile name", default="reading").strip()
-    while not name or name in cfg.get("profiles", {}):
-        name = click.prompt("Profile name (must be unique)", default=f"{name or 'reading'}_v2").strip()
-
-    p = get_default_profile()
-    export_cfg = p.setdefault("export", {})
-    export_cfg["markdown_dir"] = click.prompt("Markdown export directory", default="./md")
-    export_cfg["html_dir"] = click.prompt("HTML export directory", default="./html")
+    name, p = _prompt_new_profile(cfg=cfg, name=None, md_dir=None, html_dir=None)
 
     cfg.setdefault("profiles", {})[name] = p
     cfg["default_profile"] = name
@@ -679,6 +712,50 @@ def init_cmd(force: bool, yes: bool):
     console.print(f"[bold]Default profile:[/bold] {cfg.get('default_profile')}")
     if not cfg.get("mineru", {}).get("api_token"):
         console.print(f"[yellow]Note:[/yellow] API token is empty; set it in {config_path} or via {ENV_TOKEN_KEY}.")
+
+
+@cli.command("profile")
+@click.option("--name", help="New profile name")
+@click.option("--md-dir", help="Markdown export directory")
+@click.option("--html-dir", help="HTML export directory")
+@click.option(
+    "--set-default",
+    "set_default",
+    flag_value=True,
+    default=None,
+    help="Set the new profile as default_profile",
+)
+@click.option(
+    "--no-set-default",
+    "set_default",
+    flag_value=False,
+    help="Do not change default_profile (default behavior is to prompt)",
+)
+def profile_cmd(
+    name: Optional[str],
+    md_dir: Optional[str],
+    html_dir: Optional[str],
+    set_default: Optional[bool],
+):
+    """Create a new profile (guided) and save it into your config."""
+    cfg = load_config()
+    config_path = get_config_path()
+
+    console.print("\n[bold]Profile[/bold]")
+    prof_name, prof = _prompt_new_profile(cfg=cfg, name=name, md_dir=md_dir, html_dir=html_dir)
+
+    cfg.setdefault("profiles", {})[prof_name] = prof
+
+    if set_default is None:
+        set_default = click.confirm("Set as default profile?", default=False)
+    if set_default:
+        cfg["default_profile"] = prof_name
+
+    save_config(cfg)
+
+    console.print(f"\n[green]Saved[/green] config to: {config_path}")
+    console.print(f"[bold]Created profile:[/bold] {prof_name}")
+    console.print(f"[bold]Default profile:[/bold] {cfg.get('default_profile')}")
 
 
 @cli.command(hidden=True)
@@ -769,7 +846,7 @@ def main() -> None:
         return
 
     # If user explicitly types a subcommand, do not rewrite.
-    if argv[0] in {"convert", "config", "init", "config-token", "show-config", "upload-images"}:
+    if argv[0] in {"convert", "config", "init", "profile", "config-token", "show-config", "upload-images"}:
         cli.main(args=argv, prog_name="p2r")
         return
 
