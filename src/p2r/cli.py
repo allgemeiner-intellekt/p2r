@@ -630,7 +630,7 @@ def init_cmd(force: bool, yes: bool):
 
     This is intended for onboarding. It only asks for:
     - MinerU API token
-    - one additional profile (name + export dirs)
+    - optionally: one additional profile (name + export dirs)
     """
     config_path = get_config_path()
     if config_path.exists() and not force:
@@ -649,6 +649,16 @@ def init_cmd(force: bool, yes: bool):
     token = click.prompt("MinerU API token", default="", show_default=False)
     if token.strip():
         cfg.setdefault("mineru", {})["api_token"] = token.strip()
+
+    if not click.confirm("\nCreate a new profile now?", default=True):
+        save_config(cfg)
+        console.print(f"\n[green]Saved[/green] config to: {config_path}")
+        console.print(f"[bold]Default profile:[/bold] {cfg.get('default_profile')}")
+        if not cfg.get("mineru", {}).get("api_token"):
+            console.print(
+                f"[yellow]Note:[/yellow] API token is empty; set it in {config_path} or via {ENV_TOKEN_KEY}."
+            )
+        return
 
     console.print("\n[bold]Profile[/bold]")
     name = click.prompt("Profile name", default="reading").strip()

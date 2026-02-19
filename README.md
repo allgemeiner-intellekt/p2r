@@ -46,6 +46,9 @@ Tip: `./activate.sh` will activate `venv` and print common commands.
 p2r init
 ```
 
+During `init`, `p2r` will ask for your MinerU token and then ask whether you want to create a new profile now.
+If you answer "no", `init` will save the default config (default profile: `default`) and exit.
+
 2) Convert:
 
 ```bash
@@ -116,6 +119,11 @@ Edit config:
 ```bash
 p2r config
 ```
+
+Notes:
+
+- `p2r init` can optionally create a new profile and set it as `default_profile`.
+- If you skip profile creation during `init`, the default profile remains `default` (export dirs are `.` / `.` until you change them).
 
 Config file location:
 
@@ -222,4 +230,3 @@ If you use `--keep-images/--keep-raw`, exports are bundled under `./paper/` (to 
 ## License
 
 MIT (see `LICENSE`).
-
