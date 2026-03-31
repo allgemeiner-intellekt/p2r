@@ -139,6 +139,27 @@ p2r paper.pdf --upload-images
 p2r paper.pdf --no-upload-images
 ```
 
+### Agent / script mode
+
+Use `--json` to get structured output on stdout (progress bars go to stderr):
+
+```bash
+p2r paper.pdf --json
+```
+
+Returns a single JSON line:
+```json
+{"success": true, "markdown_path": "/absolute/path/paper.md", "html_path": "/absolute/path/paper.html"}
+```
+
+Compose with other tools:
+
+```bash
+p2r paper.pdf --json 2>/dev/null | jq -r .markdown_path
+```
+
+Exit codes: `0` success, `2` config error, `3` API error, `4` export error.
+
 Notes:
 
 - PDFs over 200MB are rejected before upload.
