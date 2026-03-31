@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 import os
 import shlex
 import shutil
@@ -47,8 +48,19 @@ from .image_upload import (
 )
 from .mineru import MinerUClient, MinerUError
 
+# Structured exit codes for agent/script consumption.
+EXIT_OK = 0
+EXIT_GENERAL = 1
+EXIT_CONFIG = 2
+EXIT_API = 3
+EXIT_EXPORT = 4
 
-console = Console()
+console = Console(stderr=True)
+
+
+def _emit_json(data: dict) -> None:
+    """Print a JSON object to stdout (for --json mode)."""
+    print(json.dumps(data))
 
 
 def _prompt_new_profile(
@@ -98,6 +110,7 @@ def _upload_images_with_progress(
     command: str,
     picgo_server_url: str,
     picgo_server_secret: str,
+    json_mode: bool = False,
 ) -> int:
     output_dir = output_dir.resolve()
     md_files = list(iter_markdown_files(output_dir))
@@ -121,22 +134,27 @@ def _upload_images_with_progress(
 
     uploaded: Dict[Path, str] = {}
 
-    with Progress(
-        SpinnerColumn(),
-        TextColumn("[progress.description]{task.description}"),
-        BarColumn(),
-        TextColumn("[progress.percentage]{task.percentage:>3.0f}%"),
-        console=console,
-    ) as progress:
-        upload_task = progress.add_task("Uploading images...", total=len(images))
-        for i, img in enumerate(images, start=1):
-            progress.update(
-                upload_task,
-                description=f"Uploading images ({i}/{len(images)}): {img.name}",
-            )
+    if json_mode:
+        for img in images:
             url = uploader.upload(img)
             uploaded[img] = url
-            progress.advance(upload_task, 1)
+    else:
+        with Progress(
+            SpinnerColumn(),
+            TextColumn("[progress.description]{task.description}"),
+            BarColumn(),
+            TextColumn("[progress.percentage]{task.percentage:>3.0f}%"),
+            console=console,
+        ) as progress:
+            upload_task = progress.add_task("Uploading images...", total=len(images))
+            for i, img in enumerate(images, start=1):
+                progress.update(
+                    upload_task,
+                    description=f"Uploading images ({i}/{len(images)}): {img.name}",
+                )
+                url = uploader.upload(img)
+                uploaded[img] = url
+                progress.advance(upload_task, 1)
 
     def resolve_to_url(local_path: Path) -> str:
         try:
@@ -144,24 +162,31 @@ def _upload_images_with_progress(
         except KeyError as e:
             raise ImageUploadError(f"Missing uploaded URL for: {local_path}") from e
 
-    with Progress(
-        SpinnerColumn(),
-        TextColumn("[progress.description]{task.description}"),
-        BarColumn(),
-        TextColumn("[progress.percentage]{task.percentage:>3.0f}%"),
-        console=console,
-    ) as progress:
-        rewrite_task = progress.add_task("Rewriting markdown...", total=len(md_files))
-        for i, md_path in enumerate(md_files, start=1):
-            progress.update(
-                rewrite_task,
-                description=f"Rewriting markdown ({i}/{len(md_files)}): {md_path.name}",
-            )
+    if json_mode:
+        for md_path in md_files:
             original = md_path.read_text(encoding="utf-8")
             rewritten = rewrite_markdown_image_links(original, output_dir, resolve_to_url)
             if rewritten != original:
                 md_path.write_text(rewritten, encoding="utf-8")
-            progress.advance(rewrite_task, 1)
+    else:
+        with Progress(
+            SpinnerColumn(),
+            TextColumn("[progress.description]{task.description}"),
+            BarColumn(),
+            TextColumn("[progress.percentage]{task.percentage:>3.0f}%"),
+            console=console,
+        ) as progress:
+            rewrite_task = progress.add_task("Rewriting markdown...", total=len(md_files))
+            for i, md_path in enumerate(md_files, start=1):
+                progress.update(
+                    rewrite_task,
+                    description=f"Rewriting markdown ({i}/{len(md_files)}): {md_path.name}",
+                )
+                original = md_path.read_text(encoding="utf-8")
+                rewritten = rewrite_markdown_image_links(original, output_dir, resolve_to_url)
+                if rewritten != original:
+                    md_path.write_text(rewritten, encoding="utf-8")
+                progress.advance(rewrite_task, 1)
 
     return len(uploaded)
 
@@ -331,6 +356,7 @@ def _run_convert_and_export(
     model: str,
     html_flag: Optional[bool],
     upload_images_flag: Optional[bool],
+    json_mode: bool = False,
 ) -> None:
     cfg = load_config()
 
@@ -338,18 +364,26 @@ def _run_convert_and_export(
     try:
         get_profile(cfg, profile_name)
     except Exception:
-        console.print(f"[red]Error:[/red] Unknown profile: {profile_name!r}")
-        console.print(f"Edit your config: {get_config_path()}")
-        sys.exit(1)
+        msg = f"Unknown profile: {profile_name!r}"
+        if json_mode:
+            _emit_json({"success": False, "error": msg, "exit_code": EXIT_CONFIG})
+        else:
+            console.print(f"[red]Error:[/red] {msg}")
+            console.print(f"Edit your config: {get_config_path()}")
+        sys.exit(EXIT_CONFIG)
 
     # Verify API token is configured
     try:
         get_api_token()
     except ValueError as e:
-        console.print(f"[red]Error:[/red] {e}")
-        console.print(f"\nPlease configure your API token in {get_config_path()}")
-        console.print(f"Or set the {ENV_TOKEN_KEY} environment variable.")
-        sys.exit(1)
+        msg = str(e)
+        if json_mode:
+            _emit_json({"success": False, "error": msg, "exit_code": EXIT_CONFIG})
+        else:
+            console.print(f"[red]Error:[/red] {msg}")
+            console.print(f"\nPlease configure your API token in {get_config_path()}")
+            console.print(f"Or set the {ENV_TOKEN_KEY} environment variable.")
+        sys.exit(EXIT_CONFIG)
 
     md_dest, html_dest = _resolve_export_dirs(
         cfg=cfg,
@@ -375,46 +409,57 @@ def _run_convert_and_export(
     client = MinerUClient()
     workdir = _make_workdir(cfg)
 
-    console.print(f"\n[bold]Converting:[/bold] {pdf_file.name}")
-    console.print(f"[bold]Profile:[/bold] {profile_name}")
-    console.print(f"[bold]Model:[/bold] {model}")
+    if not json_mode:
+        console.print(f"\n[bold]Converting:[/bold] {pdf_file.name}")
+        console.print(f"[bold]Profile:[/bold] {profile_name}")
+        console.print(f"[bold]Model:[/bold] {model}")
 
     try:
-        with Progress(
-            SpinnerColumn(),
-            TextColumn("[progress.description]{task.description}"),
-            BarColumn(),
-            TextColumn("[progress.percentage]{task.percentage:>3.0f}%"),
-            console=console,
-        ) as progress:
-            task = progress.add_task("Uploading file...", total=100)
-
-            extra_formats = ["html"] if html_enabled else None
-            for update in client.parse_pdf(
+        extra_formats = ["html"] if html_enabled else None
+        if json_mode:
+            for _update in client.parse_pdf(
                 pdf_file, workdir, model_version=model, extra_formats=extra_formats
             ):
-                state = update.get("state")
+                pass
+        else:
+            with Progress(
+                SpinnerColumn(),
+                TextColumn("[progress.description]{task.description}"),
+                BarColumn(),
+                TextColumn("[progress.percentage]{task.percentage:>3.0f}%"),
+                console=console,
+            ) as progress:
+                task = progress.add_task("Uploading file...", total=100)
 
-                if state == "waiting-file":
-                    progress.update(task, description="Waiting for file upload...", completed=20)
-                elif state == "pending":
-                    progress.update(task, description="Queued for processing...", completed=30)
-                elif state == "running":
-                    prog = update.get("progress", "")
-                    progress.update(
-                        task,
-                        description=f"Parsing ({prog} pages)...",
-                        completed=50,
-                    )
-                elif state == "converting":
-                    progress.update(task, description="Converting to Markdown...", completed=80)
-                elif state == "completed":
-                    progress.update(task, description="Download complete!", completed=100)
+                for update in client.parse_pdf(
+                    pdf_file, workdir, model_version=model, extra_formats=extra_formats
+                ):
+                    state = update.get("state")
+
+                    if state == "waiting-file":
+                        progress.update(task, description="Waiting for file upload...", completed=20)
+                    elif state == "pending":
+                        progress.update(task, description="Queued for processing...", completed=30)
+                    elif state == "running":
+                        prog = update.get("progress", "")
+                        progress.update(
+                            task,
+                            description=f"Parsing ({prog} pages)...",
+                            completed=50,
+                        )
+                    elif state == "converting":
+                        progress.update(task, description="Converting to Markdown...", completed=80)
+                    elif state == "completed":
+                        progress.update(task, description="Download complete!", completed=100)
 
     except MinerUError as e:
-        console.print(f"\n[red]Error:[/red] {e}")
+        msg = str(e)
+        if json_mode:
+            _emit_json({"success": False, "error": msg, "exit_code": EXIT_API})
+        else:
+            console.print(f"\n[red]Error:[/red] {msg}")
         shutil.rmtree(workdir, ignore_errors=True)
-        sys.exit(1)
+        sys.exit(EXIT_API)
 
     upload_images_succeeded = False
     if upload_images_enabled:
@@ -424,7 +469,8 @@ def _run_convert_and_export(
         picgo_url = img_cfg.get("picgo_server", {}).get("url", "")
         picgo_secret = img_cfg.get("picgo_server", {}).get("secret", "")
 
-        console.print("\n[bold]Uploading images...[/bold]")
+        if not json_mode:
+            console.print("\n[bold]Uploading images...[/bold]")
         try:
             uploaded_count = _upload_images_with_progress(
                 output_dir=workdir,
@@ -432,14 +478,28 @@ def _run_convert_and_export(
                 command=cmd,
                 picgo_server_url=picgo_url,
                 picgo_server_secret=picgo_secret,
+                json_mode=json_mode,
             )
         except ImageUploadError as e:
             failure_out = _move_workdir_to_failure_dir(cfg=cfg, workdir=workdir, pdf_stem=pdf_file.stem)
-            console.print(f"[yellow]Image upload/rewrite failed.[/yellow] {e}")
-            console.print("[yellow]Falling back to full output mode (all files preserved).[/yellow]")
-            console.print(f"[bold]Saved to:[/bold] {failure_out}")
+            if json_mode:
+                md_files_in_failure = list(find_files_by_extension(workdir=failure_out, ext="md"))
+                result: dict = {
+                    "success": True,
+                    "warning": "Image upload failed; raw output preserved",
+                }
+                if md_files_in_failure:
+                    result["markdown_path"] = str(md_files_in_failure[0])
+                else:
+                    result["markdown_path"] = str(failure_out)
+                _emit_json(result)
+            else:
+                console.print(f"[yellow]Image upload/rewrite failed.[/yellow] {e}")
+                console.print("[yellow]Falling back to full output mode (all files preserved).[/yellow]")
+                console.print(f"[bold]Saved to:[/bold] {failure_out}")
             return
-        console.print(f"[green]Uploaded[/green] {uploaded_count} images and rewrote Markdown links.")
+        if not json_mode:
+            console.print(f"[green]Uploaded[/green] {uploaded_count} images and rewrote Markdown links.")
         upload_images_succeeded = True
 
     # Export md/html to final destinations (default: current directory).
@@ -493,9 +553,13 @@ def _run_convert_and_export(
                         dest_root=unique_dir_path(Path(html_export_root) / pdf_stem),
                     )
     except ExportError as e:
-        console.print(f"[red]Export error:[/red] {e}")
+        msg = str(e)
+        if json_mode:
+            _emit_json({"success": False, "error": msg, "exit_code": EXIT_EXPORT})
+        else:
+            console.print(f"[red]Export error:[/red] {msg}")
         shutil.rmtree(workdir, ignore_errors=True)
-        sys.exit(1)
+        sys.exit(EXIT_EXPORT)
 
     # Copy assets if requested.
     if keep_any:
@@ -523,15 +587,25 @@ def _run_convert_and_export(
             else:
                 _copy_dir(src_raw, bundle_dir / "raw")
 
-    console.print("\n[green]Success![/green] Exported files:")
-    if md_path is not None:
-        console.print(f"  - Markdown: {md_path}")
-    if md_multi_root is not None and md_path is None:
-        console.print(f"  - Markdown: {md_multi_root}")
-    if html_path is not None:
-        console.print(f"  - HTML: {html_path}")
-    if html_multi_root is not None and html_path is None:
-        console.print(f"  - HTML: {html_multi_root}")
+    if json_mode:
+        result_data: dict = {"success": True}
+        md_out = md_path if md_path is not None else md_multi_root
+        if md_out is not None:
+            result_data["markdown_path"] = str(md_out)
+        html_out = html_path if html_path is not None else html_multi_root
+        if html_out is not None:
+            result_data["html_path"] = str(html_out)
+        _emit_json(result_data)
+    else:
+        console.print("\n[green]Success![/green] Exported files:")
+        if md_path is not None:
+            console.print(f"  - Markdown: {md_path}")
+        if md_multi_root is not None and md_path is None:
+            console.print(f"  - Markdown: {md_multi_root}")
+        if html_path is not None:
+            console.print(f"  - HTML: {html_path}")
+        if html_multi_root is not None and html_path is None:
+            console.print(f"  - HTML: {html_multi_root}")
 
     shutil.rmtree(workdir, ignore_errors=True)
 
@@ -599,6 +673,12 @@ def cli():
     type=click.Path(path_type=Path, file_okay=False),
     help="Where to save raw/debug artifacts (default: from profile)",
 )
+@click.option(
+    "--json/--no-json",
+    "json_flag",
+    default=False,
+    help="Emit structured JSON to stdout (for agent/script consumption)",
+)
 def convert(
     pdf_file: Path,
     profile: Optional[str],
@@ -612,6 +692,7 @@ def convert(
     images_dir: Optional[Path],
     keep_raw: Optional[bool],
     raw_dir: Optional[Path],
+    json_flag: bool,
 ):
     """Convert a PDF file to Markdown/HTML.
 
@@ -636,6 +717,7 @@ def convert(
         model=model,
         html_flag=html,
         upload_images_flag=upload_images,
+        json_mode=json_flag,
     )
 
 
