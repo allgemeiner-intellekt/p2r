@@ -282,11 +282,32 @@ Final exported output (default behavior, no assets):
 
 If you use `--keep-images/--keep-raw`, exports are bundled under `./paper/` (to preserve relative links).
 
+## Claude Code skill
+
+The repo ships a ready-to-use [Claude Code skill](https://docs.anthropic.com/en/docs/claude-code/skills) in `p2r/SKILL.md`. To install it, copy (or symlink) the `p2r/` directory into your Claude Code skills folder:
+
+```bash
+# symlink
+ln -s "$(pwd)/p2r" ~/.claude/skills/p2r
+
+# or copy
+cp -r p2r ~/.claude/skills/p2r
+```
+
+Once installed, Claude Code will automatically use p2r when you ask it to deeply read a PDF with complex layout, math, or figures. It requires the `agent` profile in your p2r config — create it with:
+
+```bash
+p2r profile --name agent --md-dir ./md --html-dir ./html --set-default
+```
+
+Then set `"html": false` and `"upload_images": false` in the profile (edit via `p2r config`).
+
 ## Repo layout
 
 ```
 .
 ├── src/p2r/        # package code
+├── p2r/            # Claude Code skill (SKILL.md)
 ├── tests/          # pytest tests
 ├── pyproject.toml  # packaging / deps / console script
 └── test-paper.pdf  # sample PDF used for local testing

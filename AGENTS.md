@@ -42,6 +42,12 @@ p2r paper.pdf --json 2>/dev/null | python3 -c "import sys,json; print(json.loads
 | 3 | MinerU API error |
 | 4 | Export error |
 
+## Claude Code skill
+
+A ready-to-use Claude Code skill is bundled at `p2r/SKILL.md`. Copy or symlink it to
+`~/.claude/skills/p2r` to enable automatic p2r usage in Claude Code sessions. See the
+README for setup instructions.
+
 ## Source layout
 
 ```
@@ -51,4 +57,6 @@ src/p2r/
 ├── export.py       # File export logic
 ├── config.py       # Config loading/saving
 └── image_upload.py # Image upload + markdown rewriting
+p2r/
+└── SKILL.md        # Claude Code skill definition
 ```
