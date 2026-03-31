@@ -75,28 +75,50 @@ JSON object to stdout.
 | 3 | MinerU API error (upload failed, timeout, server error) |
 | 4 | Export error (couldn't write output files) |
 
+## Output path
+
+The converted Markdown is written under `<cwd>/md/`. The exact subdirectory name includes a
+model-version suffix appended by the CLI (e.g. `_v2` for the default `vlm` model):
+
+```
+<cwd>/md/<pdf_stem>_v2/<pdf_stem>.md   # typical with default --model vlm
+<cwd>/md/<pdf_stem>/<pdf_stem>.md      # pipeline model or older CLI versions
+```
+
+The JSON output always contains the exact `markdown_path` — use that, don't guess. Images are
+placed in `<cwd>/md/image/`. Image references in the Markdown (`![...](image/...)`) point to
+that directory — note their content in your response where figures are meaningful (e.g., "Figure
+3 shows a diagram of X"); skip decorative ones.
+
 ## Workflow
 
 1. **Validate the PDF path.** Make sure the file exists and ends with `.pdf`. If the user gave a
    relative path, resolve it. If they said something vague like "this paper" without a path, ask
    which file they mean.
 
-2. **Run p2r.** Execute:
+2. **Check the cache.** Glob for `<cwd>/md/<pdf_stem>*/<pdf_stem>.md`. If a match exists, skip
+   the API call entirely and use that file — no need to re-convert.
+
+3. **Run p2r.** Execute:
    ```bash
    p2r <pdf_path> -p agent --json
    ```
    Use a generous timeout (5 minutes / 300000ms) — MinerU cloud processing can take a while for
    large PDFs.
 
-3. **Parse the result.** The stdout is a JSON object. Parse it:
+4. **Parse the result.** The stdout is a JSON object. Parse it:
    - If `success` is `true`, read the file at `markdown_path`.
    - If `success` is `false`, report the error to the user with the specific exit code context
      (e.g., exit code 2 means their config is wrong, exit code 3 means the API had an issue).
 
-4. **Read the Markdown.** Use the Read tool to load the converted Markdown file. If it's very
-   long (>2000 lines), read the first portion and let the user know the full file is at the path.
+5. **Read the Markdown.** The converted file has proper section headers throughout. For targeted
+   requests ("find the section on X", "extract the model from section 3"), use Grep on the
+   Markdown file first to locate the relevant line range, then read only that range — much faster
+   than reading linearly from the top. For open-ended requests (summarize, explain), read the
+   full file; if it's very long (>2000 lines), read in chunks and let the user know the full file
+   is at the path.
 
-5. **Proceed with the user's actual request.** The conversion is usually a means to an end — the
+6. **Proceed with the user's actual request.** The conversion is usually a means to an end — the
    user wants to read, summarize, search, or otherwise work with the paper's content. Use the
    Markdown content to fulfill their original ask.
 
@@ -113,7 +135,8 @@ JSON object to stdout.
 
 User: "read this paper and summarize it: ~/Downloads/attention.pdf"
 
-1. Run `p2r ~/Downloads/attention.pdf -p agent --json` (timeout 300s)
-2. Parse JSON → `markdown_path` is `/Users/foo/md/attention.md`
-3. Read `/Users/foo/md/attention.md`
-4. Summarize the content for the user
+1. Glob `<cwd>/md/attention*` — no match, so proceed with conversion.
+2. Run `p2r ~/Downloads/attention.pdf -p agent --json` (timeout 300s)
+3. Parse JSON → `markdown_path` is `<cwd>/md/attention_v2/attention.md`
+4. Read `<cwd>/md/attention_v2/attention.md`
+5. Summarize the content for the user
